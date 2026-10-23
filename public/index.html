@@ -1,1 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Service Center Stock Book</title>
+<style>
+:root{--bg:#f3f5f2;--card:#fff;--ink:#17231c;--mute:#5c6b62;--line:#d5dcd6;--acc:#1f6f4a;--acc-ink:#fff;--warn:#b3261e;--soft:#e6efe9;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111815;--card:#1a241f;--ink:#e8efe9;--mute:#9aaba1;--line:#2f3d35;--acc:#4cc38a;--acc-ink:#07140d;--warn:#ff8a80;--soft:#22302a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111815;--card:#1a241f;--ink:#e8efe9;--mute:#9aaba1;--line:#2f3d35;--acc:#4cc38a;--acc-ink:#07140d;--warn:#ff8a80;--soft:#22302a;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 "Segoe UI",system-ui,Roboto,Arial,sans-serif}
+main{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:0 0 2px}
+h2{font-size:1.1rem;margin:0 0 10px}
+.sub{color:var(--mute);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+label{display:flex;flex-direction:column;font-size:.85rem;color:var(--mute);gap:3px}
+select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}
+input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;min-width:0}
+input:focus,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--soft);color:var(--ink);padding:8px 14px}
+button.p{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:600}
+button.x{color:var(--warn);padding:4px 9px}
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{padding:6px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:.8rem;color:var(--mute);font-weight:600}
+td input{width:76px;text-align:right}
+td.n{font-variant-numeric:tabular-nums}
+td.close{font-weight:700;color:var(--acc)}
+tfoot td{font-weight:700;border-bottom:0}
+.sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.sum div{background:var(--soft);border-radius:8px;padding:10px}
+.sum b{display:block;font-size:1.25rem}
+.sum span{color:var(--mute);font-size:.85rem}
+.empty{color:var(--mute);padding:10px 0}
+.tot{font-size:1.4rem;font-weight:700;color:var(--acc)}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+<main>
+<h1>Service center stock book</h1>
+<p class="sub">Morning: add stock. Evening: enter what was sold. Remaining stock carries to the next day automatically.</p>
 
+<div class="card">
+  <div class="row">
+    <label>Pick any date<input type="date" id="date"></label>
+    <button id="yestBtn">Yesterday</button>
+    <button id="todayBtn">Today</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Add an item</h2>
+  <div class="row">
+    <label>Item name<input id="iname" placeholder="e.g. Mobile screen"></label>
+    <label>Price per piece (₹)<input id="iprice" type="number" inputmode="decimal" min="0" placeholder="0"></label>
+    <label>Old stock already in shop<input id="iold" type="number" inputmode="numeric" min="0" placeholder="0"></label>
+    <button class="p" id="addItem">Add item</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Stock for the day</h2>
+  <div class="wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Price ₹</th><th>Yesterday’s left</th><th>Added today</th><th>Total</th><th>Sold</th><th>Remaining</th><th>Sale ₹</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+      <tfoot id="foot"></tfoot>
+    </table>
+  </div>
+  <div class="empty" id="empty">No items yet. Add your first item above.</div>
+  <p class="sub" style="margin:10px 0 0">“Yesterday’s left” shows your old stock automatically. Whatever you add today and don’t sell becomes tomorrow’s “Yesterday’s left”.</p>
+</div>
+
+<div class="card">
+  <h2>Money: yesterday + today = total</h2>
+  <div class="row">
+    <label>Yesterday’s total ₹<input id="yest" type="number" inputmode="decimal"></label>
+    <label>Today’s sale ₹<input id="tsale" disabled></label>
+    <label>Other amount today ₹ (+ / −)<input id="extra" type="number" inputmode="decimal" placeholder="0"></label>
+    <div><span style="font-size:.85rem;color:var(--mute)">Total</span><div class="tot" id="gtotal">₹0</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>PDF preview</h2>
+  <div class="row">
+    <label>Saved days<select id="pvSel"></select></label>
+    <button class="p" id="pvBtn">Preview PDF</button>
+    <button id="pvDl">Download PDF</button>
+  </div>
+  <iframe id="pvFrame" title="PDF preview" style="display:none;width:100%;height:560px;border:1px solid var(--line);border-radius:8px;margin-top:12px;background:#fff"></iframe>
+</div>
+
+<div class="card">
+  <h2>Send PDF report to WhatsApp</h2>
+  <div class="row">
+    <label>WhatsApp number (with country code)<input id="phone" inputmode="tel" placeholder="919876543210"></label>
+    <button class="p" id="send">Send PDF to WhatsApp</button>
+  </div>
+  <p class="sub" style="margin:10px 0 0">Everything saves automatically on this device and browser. On a phone, WhatsApp opens with the PDF attached. On a computer, the PDF downloads and you attach it in WhatsApp.</p>
+</div>
+</main>
+
+<script>
+(function(){
+var S={items:[],days:{},phone:''};
+var saveTimer=null;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(function(){
+    fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(S)})
+      .catch(function(){alert('Could not save. Check your internet connection.')});
+  },300);
+}
+function fmtDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+var date=fmtDate(new Date());
+var $=function(i){return document.getElementById(i)};
+function num(v){var n=parseFloat(v);return isNaN(n)?0:n}
+function money(n){return '₹'+(Math.round(n*100)/100).toLocaleString('en-IN')}
+function day(d){if(!S.days[d])S.days[d]={r:{}};if(!S.days[d].r)S.days[d].r={};return S.days[d]}
+function rec(d,id){var x=S.days[d];return(x&&x.r&&x.r[id])||{}}
+function earlier(d,test){var ds=Object.keys(S.days).filter(function(x){return x<d&&test(x)}).sort();return ds.length?ds[ds.length-1]:null}
+function calc(id,d){
+  var r=rec(d,id),open=0;
+  if(r.open!==undefined&&r.open!==''){open=num(r.open)}
+  else{var p=earlier(d,function(x){return S.days[x].r&&S.days[x].r[id]});if(p)open=calc(id,p).close}
+  var add=num(r.add),sold=num(r.sold);
+  return{open:open,add:add,sold:sold,total:open+add,close:open+add-sold}
+}
+function daySale(d){return S.items.reduce(function(s,it){return s+calc(it.id,d).sold*num(it.price)},0)}
+function dayTotal(d){
+  var x=S.days[d]||{},y;
+  if(x.yest!==undefined&&x.yest!=='')y=num(x.yest);
+  else{var p=earlier(d,function(){return true});y=p?dayTotal(p):0}
+  return{yest:y,sale:daySale(d),extra:num(x.extra),total:y+daySale(d)+num(x.extra)}
+}
+function renderRows(){
+  var tb=$('rows');tb.innerHTML='';
+  $('empty').style.display=S.items.length?'none':'block';
+  S.items.forEach(function(it){
+    var c=calc(it.id,date),r=rec(date,it.id),tr=document.createElement('tr');
+    tr.innerHTML='<td>'+esc(it.name)+'</td><td class="n">'+num(it.price)+'</td>'
+    +'<td><input data-f="open" type="number" inputmode="numeric" min="0" value="'+c.open+'"></td>'
+    +'<td><input data-f="add" type="number" inputmode="numeric" min="0" value="'+(r.add!==undefined?r.add:'')+'" placeholder="0"></td>'
+    +'<td class="n" data-o="total"></td>'
+    +'<td><input data-f="sold" type="number" inputmode="numeric" min="0" value="'+(r.sold!==undefined?r.sold:'')+'" placeholder="0"></td>'
+    +'<td class="n close" data-o="close"></td><td class="n" data-o="amt"></td>'
+    +'<td><button class="x" title="Delete item" aria-label="Delete '+esc(it.name)+'">Delete</button></td>';
+    tr.querySelectorAll('input').forEach(function(inp){
+      inp.addEventListener('input',function(){
+        var rr=day(date).r;if(!rr[it.id])rr[it.id]={};
+        rr[it.id][inp.dataset.f]=inp.value;save();update();
+      });
+    });
+    tr.querySelector('.x').addEventListener('click',function(){
+      if(confirm('Delete '+it.name+' and its history?')){
+        S.items=S.items.filter(function(z){return z.id!==it.id});
+        Object.keys(S.days).forEach(function(d){if(S.days[d].r)delete S.days[d].r[it.id]});
+        save();renderRows();update();
+      }
+    });
+    tr._id=it.id;tb.appendChild(tr);
+  });
+  update();
+}
+function update(){
+  var tq=0,tsold=0,tleft=0,tamt=0,tleftVal=0;
+  $('rows').querySelectorAll('tr').forEach(function(tr){
+    var it=S.items.filter(function(z){return z.id===tr._id})[0];if(!it)return;
+    var c=calc(it.id,date),amt=c.sold*num(it.price);
+    tr.querySelector('[data-o=total]').textContent=c.total;
+    tr.querySelector('[data-o=close]').textContent=c.close;
+    tr.querySelector('[data-o=amt]').textContent=money(amt);
+    tq+=c.total;tsold+=c.sold;tleft+=c.close;tamt+=amt;tleftVal+=c.close*num(it.price);
+  });
+  $('foot').innerHTML=S.items.length?'<tr><td>All items</td><td></td><td></td><td></td><td>'+tq+'</td><td>'+tsold+'</td><td>'+tleft+'</td><td>'+money(tamt)+'</td><td></td></tr>':'';
+  var t=dayTotal(date),x=S.days[date]||{};
+  var yi=$('yest');if(document.activeElement!==yi)yi.value=t.yest;
+  $('tsale').value=money(t.sale);
+  var ei=$('extra');if(document.activeElement!==ei)ei.value=x.extra!==undefined?x.extra:'';
+  $('gtotal').textContent=money(t.total);
+  refreshDays();
+}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function setDate(d){
+  date=d;$('date').value=d;
+  var t=fmtDate(new Date()),y=new Date();y.setDate(y.getDate()-1);
+  $('todayBtn').className=d===t?'p':'';$('yestBtn').className=d===fmtDate(y)?'p':'';
+  renderRows();refreshDays(d);
+}
+function shift(n){var p=date.split('-'),d=new Date(+p[0],+p[1]-1,+p[2]+n);setDate(fmtDate(d))}
+$('date').addEventListener('change',function(){if(this.value)setDate(this.value)});
+$('yestBtn').onclick=function(){var d=new Date();d.setDate(d.getDate()-1);setDate(fmtDate(d))};
+$('todayBtn').onclick=function(){setDate(fmtDate(new Date()))};
+$('addItem').onclick=function(){
+  var n=$('iname').value.trim();if(!n){$('iname').focus();return}
+  var nid='i'+Date.now();
+  S.items.push({id:nid,name:n,price:num($('iprice').value)});
+  if($('iold').value!==''){var rr=day(date).r;rr[nid]={open:$('iold').value}}
+  $('iname').value='';$('iprice').value='';$('iold').value='';save();renderRows();$('iname').focus();
+};
+$('iname').addEventListener('keydown',function(e){if(e.key==='Enter')$('addItem').click()});
+$('yest').addEventListener('input',function(){day(date).yest=this.value;save();update()});
+$('extra').addEventListener('input',function(){day(date).extra=this.value;save();update()});
+$('phone').addEventListener('input',function(){S.phone=this.value;save()});
+function buildPdf(d){
+  var JP=window.jspdf&&window.jspdf.jsPDF;
+  if(!JP){alert('PDF tool did not load. Check your internet connection and refresh.');return null}
+  if(!S.items.length){alert('Add at least one item first.');return null}
+  var dd=d.split('-').reverse().join('-'),t=dayTotal(d);
+  var doc=new JP({unit:'mm',format:'a4',orientation:'portrait'});
+  // Page margins (mm): clear space on all four sides
+  var ML=15,MR=15,MT=18,MB=18;
+  var PW=doc.internal.pageSize.getWidth(),PH=doc.internal.pageSize.getHeight();
+  doc.setFontSize(16);doc.setFont('helvetica','bold');doc.text('Daily Stock Report',ML,MT+4);
+  doc.setFont('helvetica','normal');doc.setFontSize(11);doc.text('Date: '+dd,ML,MT+12);
+  doc.setDrawColor(31,111,74);doc.setLineWidth(0.5);doc.line(ML,MT+16,PW-MR,MT+16);
+  var body=S.items.map(function(it){var c=calc(it.id,d);
+    return[it.name,num(it.price),c.open,c.add,c.total,c.sold,c.close,(c.sold*num(it.price)).toFixed(2)]});
+  doc.autoTable({
+    startY:MT+22,
+    margin:{top:MT,right:MR,bottom:MB,left:ML},
+    tableWidth:PW-ML-MR,
+    theme:'grid',
+    head:[['Item','Price','Yesterday left','Added','Total','Sold','Remaining','Sale (Rs.)']],
+    body:body,
+    styles:{fontSize:9,cellPadding:2.5,overflow:'linebreak',lineColor:[200,208,202],lineWidth:0.2},
+    headStyles:{fillColor:[31,111,74],textColor:255,halign:'right'},
+    columnStyles:{0:{halign:'left',cellWidth:'auto'},1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right'},7:{halign:'right'}},
+    didParseCell:function(h){if(h.section==='head'&&h.column.index===0)h.cell.styles.halign='left'}
+  });
+  var y=doc.lastAutoTable.finalY+10;
+  // keep the totals block inside the bottom margin; move to a new page if needed
+  if(y+28>PH-MB){doc.addPage();y=MT+4}
+  doc.setFontSize(11);
+  doc.text('Yesterday total: Rs. '+t.yest.toFixed(2),ML,y);
+  doc.text('Today sale: Rs. '+t.sale.toFixed(2),ML,y+7);
+  if(t.extra)doc.text('Other amount: Rs. '+t.extra.toFixed(2),ML,y+14);
+  doc.setFontSize(13);doc.setFont('helvetica','bold');
+  doc.text('Total: Rs. '+t.total.toFixed(2),ML,y+(t.extra?23:16));
+  return{doc:doc,name:'stock-report-'+d+'.pdf',dd:dd};
+}
+function refreshDays(sel){
+  var el=$('pvSel'),keep=sel||el.value,ds=Object.keys(S.days);
+  if(ds.indexOf(date)<0)ds.push(date);
+  ds.sort().reverse();
+  el.innerHTML=ds.map(function(d){return'<option value="'+d+'">'+d.split('-').reverse().join('-')+'</option>'}).join('');
+  el.value=ds.indexOf(keep)>=0?keep:date;
+}
+var pvUrl=null;
+$('pvBtn').onclick=function(){
+  var r=buildPdf($('pvSel').value);if(!r)return;
+  if(pvUrl)URL.revokeObjectURL(pvUrl);
+  pvUrl=URL.createObjectURL(r.doc.output('blob'));
+  var f=$('pvFrame');f.src=pvUrl;f.style.display='block';
+  f.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
+$('pvDl').onclick=function(){var r=buildPdf($('pvSel').value);if(r)r.doc.save(r.name)};
+$('send').onclick=async function(){
+  var r=buildPdf(date);if(!r)return;
+  var file=new File([r.doc.output('blob')],r.name,{type:'application/pdf'});
+  // Phone: opens the share sheet, choose WhatsApp, the PDF is attached
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:'Daily stock report '+r.dd});return}
+    catch(e){if(e.name==='AbortError')return}
+  }
+  // Computer: download the PDF and open WhatsApp, then attach it
+  r.doc.save(r.name);
+  var ph=($('phone').value||'').replace(/\D/g,'');
+  window.open('https://wa.me/'+ph+'?text='+encodeURIComponent('Daily stock report '+r.dd+' (PDF attached)'),'_blank','noopener');
+  alert('PDF saved in your Downloads folder. In WhatsApp click the attach (paperclip) icon, choose Document, and select '+r.name+'.');
+};
+fetch('/api/state').then(function(r){return r.json()}).then(function(v){
+  if(v&&v.items)S=v;
+  $('phone').value=S.phone||'';
+  setDate(date);
+}).catch(function(){setDate(date)});
+})();
+</script>
+</body>
+</html>
